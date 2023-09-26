@@ -1,0 +1,329 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <termios.h>
+#include <pthread.h>
+#include <time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <errno.h>
+
+int fd, fd1;
+// int len, len1;
+// char text[222];
+// char ok[]= "OK";
+pthread_mutex_t count_look;
+extern int errno;
+
+// typedef struct
+// {
+// 	int fd;
+// 	volatile int cnt;
+// 	char *name;
+// 	int length_max;
+// 	char *buffer;
+// } serial_data_def;
+
+struct termios options; /* Serial ports setting */
+
+void *start_thread2(void *message);
+
+void *start_thread0(void *message);
+void *start_thread1(void *message);
+void *start_thread3(void *message);
+void *start_thread5(void *message);
+
+// int serial_init();
+void serial_init(char USB[255]);
+void write_serial(char text[222]);
+void read_serial();
+void serial_close();
+
+void *start_thread0(void *message)
+{
+	pthread_mutex_lock(&count_look);
+	printf("\nThread 0\n");
+
+	serial_init("/dev/ttyUSB0");
+	write_serial("W_th0\r");
+	sleep(1);
+	read_serial();
+
+	pthread_mutex_unlock(&count_look);
+	return NULL;
+}
+
+void *start_thread1(void *message)
+{
+	pthread_mutex_lock(&count_look);
+	printf("\nThread 1\n");
+
+	serial_init("/dev/ttyUSB1");
+	write_serial("W_th1\r");
+	sleep(1);
+	read_serial();
+
+	pthread_mutex_unlock(&count_look);
+	return NULL;
+}
+
+void *start_thread2(void *message)
+{
+	pthread_mutex_lock(&count_look);
+	printf("\nThread 2\n");
+
+	serial_init("/dev/ttyUSB2");
+
+	write_serial("AT\r");
+	// sleep(1);
+	// read_serial();
+
+	write_serial("AT+CICCID\r");
+	// sleep(1);
+	// read_serial();
+
+	// Power
+	write_serial("AT+CGNSSPWR=1\r");
+	// sleep(1);
+	// read_serial();
+
+	// write_serial("AT+CGNSSTST=1\r");
+
+	// Check TST =1 k ?
+	write_serial("AT+CGNSSTST?\r");
+	// sleep(1);
+	// read_serial();
+
+	// Select of
+	// write_serial("AT+CGPSCOLD\r");
+	// sleep(1);
+	// read_serial();
+
+	// USB AT port after executing
+	// write_serial("AT+CGNSSINFO=1\r");
+	// sleep(1);
+	// read_serial();
+
+	// Select output port MNEA
+	write_serial("AT+CGNSSPORTSWITCH=?\r");
+	// sleep(1);
+	// read_serial();
+
+	// check read file OK
+	write_serial("AT+CGNSSPORTSWITCH?\r");
+	// sleep(1);
+	// read_serial();
+
+	// Check write file OK
+	// write_serial("AT+CGNSSPORTSWITCH=0,0\r");
+	// sleep(1);
+	// read_serial();
+
+	pthread_mutex_unlock(&count_look);
+	return NULL;
+}
+
+void *start_thread3(void *message)
+{
+	pthread_mutex_lock(&count_look);
+	printf("\nThread 3\n");
+
+	serial_init("/dev/ttyUSB3");
+	write_serial("W_th3\r");
+	sleep(1);
+	read_serial();
+	serial_close();
+
+	pthread_mutex_unlock(&count_look);
+	return NULL;
+}
+
+void *start_thread5(void *message)
+{
+	pthread_mutex_lock(&count_look);
+	printf("\nThread 5\n");
+
+	serial_init("/dev/ttyUSB5");
+	write_serial("W_th5\r");
+	sleep(1);
+	read_serial();
+	serial_close();
+
+	pthread_mutex_unlock(&count_look);
+	return NULL;
+}
+
+void serial_init(char USB[255])
+{
+
+	fd = open("/dev/ttyUSB2", O_RDWR | O_NOCTTY | O_NONBLOCK);
+	if (fd < 0)
+	{
+		perror("Error opening serial port");
+		// return -1;
+	}
+	fcntl(fd, F_SETFL, 0);
+	// fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
+
+	/* Read current serial port settings */
+	// tcgetattr(fd, &options);
+
+	/* Set up serial port */
+	options.c_cflag = B115200 | CS8 | CLOCAL | CREAD;
+	options.c_iflag = IGNPAR;
+	options.c_oflag = 0;
+	options.c_lflag = 0;
+
+	options.c_cflag &= ~PARENB; // Clear parity bit, disabling parity (most common)
+	options.c_cflag &= ~CSTOPB; // Clear stop field, only one stop bit used in communication (most common)
+	options.c_cflag &= ~CSIZE;	// Clear all the size bits, then use one of the statements below
+	options.c_cflag |= CS8;		// 8 bits per byte (most common)
+	// options.c_cflag &= ~CRTSCTS;	   // Disable RTS/CTS hardware flow control (most common)
+	options.c_cflag |= CREAD | CLOCAL; // Turn on READ & ignore ctrl lines (CLOCAL = 1)
+
+	options.c_lflag &= ~ICANON; // Disable Canonical mode
+	options.c_lflag &= ~ECHO;	// Disable echo
+	options.c_lflag &= ~ISIG;	// Disable interpretation of INTR, QUIT and SUSP
+
+	options.c_iflag &= ~(IXON | IXOFF | IXANY);										 // Turn off s/w flow ctrl
+	options.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL); // Disable any special handling of received bytes
+
+	options.c_oflag &= ~OPOST; // Prevent special interpretation of output bytes (e.g. newline chars)
+	options.c_oflag &= ~ONLCR;
+
+	options.c_cc[VMIN] = 0;	  // read doesn't block
+	options.c_cc[VTIME] = 10; // 0.5 seconds read timeout
+
+	/* Apply the settings */
+	tcflush(fd, TCIFLUSH);
+	tcsetattr(fd, TCSANOW, &options);
+}
+
+// serial
+void write_serial(char text[222])
+{
+	int len;
+	len = strlen(text);
+	len = write(fd, text, len);
+	printf("Data write: %s\n", text);
+}
+
+void read_serial()
+{
+	ssize_t byteRead = 0;
+	int max_size = 10000;
+	unsigned long text[max_size];
+	int total = 0;
+
+	// memset(&text, '\0', sizeof(text));
+	// byteRead = read(fd, &text, max_size);
+	// printf("Received %d bytes\n", byteRead);
+	// printf("Received string: %s\n", text);
+	// if (byteRead < 0)
+	// {
+	// 	printf("ERROR");
+	// }
+
+	// while (fd > 0)
+	// {
+	// 	// printf("In While\n");
+	// 	byteRead = read(fd, &text, max_size);
+	// 	if (byteRead < 0)
+	// 	{
+	// 		printf("Err Read\n");
+	// 		fd = -1;
+	// 	}
+	// }
+	// printf("Received %d bytes\n", byteRead);
+	// printf("Received string: %s\n", text);
+
+	while (1)
+	{
+		// printf("In While\n");
+		byteRead = read(fd, &text, max_size);
+		if (byteRead <= 0)
+		{
+			// printf("Err Read\n");
+			// fd = -1;
+		}
+		else
+		{
+			printf("Received %d bytes\n", byteRead);
+			printf("Received string: %s\n", text);
+		}
+	}
+
+	// printf("End Read:");
+
+	// start:
+	// 	byteRead = read(fd, text, BUFSIZ);
+	// 	if (byteRead == -1)
+	// 	{
+	// 		if (errno == EINTR)
+	// 			goto start; /* oh shush */
+	// 		if (errno == EAGAIN)
+	// 		{
+	// 			printf("Err EAGAIN");
+	// 		}
+	// 		/* resubmit later */
+	// 		else
+	// 		{
+	// 			printf("Err\n");
+	// 		}
+	// 		/* error */
+	// 	}
+	// 	printf("Received %d bytes\n", byteRead);
+	// 	printf("Received string: %s\n", text);
+
+	// ssize_t ret = 0;
+	// while (max_size != 0 && (ret = read(fd, text, max_size)) != 0)
+	// {
+	// 	if (ret == -1)
+	// 	{
+	// 		if (errno == EINTR)
+	// 			continue;
+	// 		perror("read");
+	// 		break;
+	// 	}
+
+	// 	max_size -= ret;
+	// 	// text += ret;
+	// }
+	// // printf("Received %d bytes\n", ret);
+	// printf("Received string: %s\n", text);
+}
+void serial_close()
+{
+	close(fd);
+}
+int main()
+{
+	// printf("bat dau\n");
+	// int fd, len;
+	pthread_t thing0, thing1, thing2, thing3, thing5;
+	const char *message0 = "Thing 0";
+	const char *message1 = "Thing 1";
+	const char *message2 = "Thing 2";
+	const char *message3 = "Thing 3";
+	const char *message5 = "Thing 5";
+
+	pthread_mutex_init(&count_look, NULL);
+
+	pthread_create(&thing2, NULL, start_thread2, "T2\n");
+	pthread_create(&thing0, NULL, start_thread0, "T0\n");
+	pthread_create(&thing1, NULL, start_thread1, "T1\n");
+	pthread_create(&thing3, NULL, start_thread3, "T3\n");
+	pthread_create(&thing5, NULL, start_thread5, "T5\n");
+
+	pthread_join(thing0, NULL);
+	pthread_join(thing1, NULL);
+	pthread_join(thing3, NULL);
+	pthread_join(thing5, NULL);
+	pthread_join(thing2, NULL);
+
+	pthread_mutex_destroy(&count_look);
+	// serial_close();
+	return 0;
+}

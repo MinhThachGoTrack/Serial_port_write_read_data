@@ -1,0 +1,54 @@
+#include <stdlib.h>
+#include <stdio.h>
+#include <pthread.h>
+#include <string.h>
+
+int count;
+pthread_mutex_t count_look;
+
+void *start_thread(void *message)
+{
+  pthread_mutex_lock(&count_look);
+  for (int i = 0; i < 100; i++)
+  {
+    count++;
+  }
+  pthread_mutex_unlock(&count_look);
+  return NULL;
+  printf("%s\n", (const char *)message);
+  // return message;
+}
+
+int main(void)
+{
+  // char ab[100] = {0};
+
+  pthread_t thing1, thing2;
+  const char *message1 = "Thing 1";
+  const char *message2 = "Thing 2";
+
+  // memset(&a, 0, sizeof(a));
+  pthread_mutex_init(&count_look, NULL);
+
+  /* Create two threads, each with a different message. */
+  pthread_create(&thing1, NULL, start_thread, (void *)message1);
+  pthread_create(&thing2, NULL, start_thread, (void *)message2);
+
+  /*
+   * Wait for the threads to exit. If we didn't join here,
+   * we'd risk terminating this main thread before the
+   * other two threads finished.
+   */
+  // pthread_join(thing1, NULL);
+  // pthread_join(thing2, NULL);
+
+  pthread_join(thing1, NULL);
+
+  pthread_join(thing2, NULL);
+
+  printf("Count %d\n", count);
+
+  pthread_mutex_destroy(&count_look);
+
+  return 0;
+}

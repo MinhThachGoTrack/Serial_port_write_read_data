@@ -1,0 +1,58 @@
+#include <stdio.h>
+
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <termios.h>
+#include <pthread.h>
+#include <time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <errno.h>
+#define index_keyboard 2
+char *enter_keyboard[index_keyboard];
+void get_keyboard_pth()
+{
+    printf("===Wait to Enter===\n");
+    char key_board[30];
+    fgets(key_board, 29, stdin);
+    key_board[strlen(key_board) - 1] = '\0';
+    // printf("Key Board: %s", key_board);
+    // return key_board;
+
+    char *token;
+    const char s[2] = ",";
+    int i = 0;
+    if (strstr(key_board, s) != NULL)
+    {
+        token = strtok(key_board, s);
+        while (token != NULL)
+        {
+
+            enter_keyboard[i] = malloc(sizeof(char) * strlen(token));
+            memcpy(enter_keyboard[i], token, strlen(token));
+            token = strtok(NULL, s);
+            i++;
+        }
+        for (int j = 0; j < index_keyboard; j++)
+        {
+            printf("%s\n", enter_keyboard[j]);
+        }
+    }
+    else
+    {
+        get_keyboard_pth();
+        // printf("Do not ,\n");
+    }
+}
+int main()
+{
+    get_keyboard_pth();
+    free(enter_keyboard[0]);
+    free(enter_keyboard[1]);
+    enter_keyboard[0] = NULL;
+    enter_keyboard[1] = NULL;
+    return 0;
+}

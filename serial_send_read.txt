@@ -1,0 +1,300 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <termios.h>
+#include <pthread.h>
+#include <time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <errno.h>
+
+#define MAIN_TERMINAL_SERIAL "/dev/ttyS2"
+#define USB_TO_SERIAL_0 "/dev/ttyUSB1"
+#define USB_TO_SERIAL_1 "/dev/ttyUSB3" // AT
+#define USB_TO_SERIAL_2 "/dev/ttyUSB4"
+#define USB_TO_SERIAL_3 "/dev/ttyUSB5"
+
+#define TOTAL_USB_TO_SERIAL_PORT 4
+#define USB_TO_SERIAL0_PORT_INDX 0
+#define USB_TO_SERIAL1_PORT_INDX 1
+#define USB_TO_SERIAL2_PORT_INDX 2
+#define USB_TO_SERIAL3_PORT_INDX 3
+
+#define index_keyboard 2
+char *enter_keyboard[index_keyboard];
+int serial_open_fd[TOTAL_USB_TO_SERIAL_PORT] = {0};
+
+// pthread_mutex_t count_look;
+extern int errno;
+
+typedef struct
+{
+	int fd;
+	volatile int cnt;
+	char *name;
+	int length_max;
+	char *buffer;
+} serial_data_def;
+
+int count;
+pthread_mutex_t count_look;
+
+struct termios options; /* Serial ports setting */
+
+static pthread_t get_keyboard, serial_port_class, serial_read;
+// static pthread_t serial_port_class, serial_read;
+
+int open_serial_port(char ttyUSB[155]);
+// void get_key();
+
+void get_keyboard_pth(void *arr)
+{
+
+	// pthread_mutex_lock(&count_look);
+	while (1)
+	{
+		printf("===Wait to Enter===\n");
+		char key_board[30];
+		fgets(key_board, 29, stdin);
+		key_board[strlen(key_board) - 1] = '\0';
+		// printf("Key Board: %s", key_board);
+		// return key_board;
+
+		char *token;
+		const char s[2] = ",";
+		int ind = 0;
+		if (strstr(key_board, s) != NULL)
+		{
+			if (strstr(key_board, "usb0") || strstr(key_board, "usb1") || strstr(key_board, "usb2") || strstr(key_board, "usb3"))
+			{
+				token = strtok(key_board, s);
+				while (token != NULL && ind < index_keyboard)
+				{
+
+					enter_keyboard[ind] = malloc(sizeof(char) * strlen(token));
+					memcpy(enter_keyboard[ind], token, strlen(token));
+					token = strtok(NULL, s);
+					ind++;
+				}
+				for (int j = 0; j < index_keyboard; j++)
+				{
+					printf("%s\n", enter_keyboard[j]);
+				}
+			}
+		}
+	}
+
+	// pthread_mutex_unlock(&count_look);
+}
+
+int open_serial_port(char ttyUSB[155])
+{
+	int serial_fd;
+	serial_fd = open(ttyUSB, O_RDWR | O_NOCTTY | O_NDELAY);
+
+	if (serial_fd < 0)
+	{
+		perror("Err opening serial port");
+		return -1;
+	}
+	fcntl(serial_fd, F_SETFL, 0);
+	// printf("Open Serial Complete: %s\n", ttyUSB);
+	/* Read current serial port settings */
+	// tcgetattr(fd, &options);
+
+	/* Set up serial port */
+	options.c_cflag = B115200 | CS8 | CLOCAL | CREAD;
+	options.c_iflag = IGNPAR;
+	options.c_oflag = 0;
+	options.c_lflag = 0;
+
+	options.c_cflag &= ~PARENB;		   // Clear parity bit, disabling parity (most common)
+	options.c_cflag &= ~CSTOPB;		   // Clear stop field, only one stop bit used in communication (most common)
+	options.c_cflag &= ~CSIZE;		   // Clear all the size bits, then use one of the statements below
+	options.c_cflag |= CS8;			   // 8 bits per byte (most common)
+	options.c_cflag &= ~CRTSCTS;	   // Disable RTS/CTS hardware flow control (most common)
+	options.c_cflag |= CREAD | CLOCAL; // Turn on READ & ignore ctrl lines (CLOCAL = 1)
+
+	options.c_lflag &= ~ICANON; // Disable Canonical mode
+	options.c_lflag &= ~ECHO;	// Disable echo
+	options.c_lflag &= ~ISIG;	// Disable interpretation of INTR, QUIT and SUSP
+
+	options.c_iflag &= ~(IXON | IXOFF | IXANY);										 // Turn off s/w flow ctrl
+	options.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL); // Disable any special handling of received bytes
+
+	options.c_oflag &= ~OPOST; // Prevent special interpretation of output bytes (e.g. newline chars)
+	options.c_oflag &= ~ONLCR;
+
+	options.c_cc[VMIN] = 0;	 // read doesn't block
+	options.c_cc[VTIME] = 1; // 1 seconds read timeout
+
+	/* Apply the settings */
+	tcflush(serial_fd, TCIFLUSH);
+	tcsetattr(serial_fd, TCSANOW, &options);
+	printf("Open %s complete \n", ttyUSB);
+	return serial_fd;
+}
+
+void serial_port_class_pth(void *arr)
+{
+	// pthread_mutex_lock(&count_look);
+	int port_ind = -1;
+	while (1)
+	{
+		int byte_write = 0;
+		// if (enter_keyboard[0] && enter_keyboard[1] && strstr(enter_keyboard[2], "\r"))
+		if (enter_keyboard[0] && enter_keyboard[1])
+		{
+			printf("===Wait to Write===\n");
+			if ((strstr(enter_keyboard[0], "usb0")) != NULL)
+			{
+				port_ind = 0;
+			}
+			else if ((strstr(enter_keyboard[0], "usb1")) != NULL)
+			{
+				port_ind = 1;
+			}
+			else if ((strstr(enter_keyboard[0], "usb2")) != NULL)
+			{
+				port_ind = 2;
+			}
+			else if ((strstr(enter_keyboard[0], "usb3")) != NULL)
+			{
+				port_ind = 3;
+			}
+			else
+			{
+				printf("Err format %s--- %s\n", enter_keyboard[0], enter_keyboard[1]);
+			}
+			if (port_ind >= 0)
+			{
+
+				// byte_write = write(serial_open_fd[USB_TO_SERIAL1_PORT_INDX], "AT\r", strlen("AT\r"));
+				byte_write = write(serial_open_fd[port_ind], enter_keyboard[1], strlen(enter_keyboard[1]));
+
+				if (byte_write > 0)
+					printf("Write[%d]: %s to @%s\n", strlen(enter_keyboard[1]), enter_keyboard[1], enter_keyboard[0]);
+				else
+					printf("Err write\n");
+				port_ind = -1;
+			}
+
+			free(enter_keyboard[0]);
+			free(enter_keyboard[1]);
+			enter_keyboard[0] = NULL;
+			enter_keyboard[1] = NULL;
+		}
+	}
+	usleep(10);
+	// pthread_mutex_unlock(&count_look);
+}
+
+// void serial_port_class_pth(void *arr)
+// {
+// 	// pthread_mutex_lock(&count_look);
+// 	int port_ind = -1;
+// 	while (1)
+// 	{
+// 		int byte_write = 0;
+// 		if (strstr(enter_keyboard[2], "\r") != NULL)
+// 		// if (enter_keyboard[0] && enter_keyboard[1])
+// 		{
+// 			printf("===Wait to Write===\n");
+// 			if ((strstr(enter_keyboard[0], "usb0")) != NULL)
+// 			{
+// 				port_ind = 0;
+// 			}
+// 			else if ((strstr(enter_keyboard[0], "usb1")) != NULL)
+// 			{
+// 				port_ind = 1;
+// 			}
+// 			else if ((strstr(enter_keyboard[0], "usb2")) != NULL)
+// 			{
+// 				port_ind = 2;
+// 			}
+// 			else if ((strstr(enter_keyboard[0], "usb3")) != NULL)
+// 			{
+// 				port_ind = 3;
+// 			}
+// 			else
+// 			{
+// 				printf("Err format %s--- %s\n", enter_keyboard[0], enter_keyboard[1]);
+// 			}
+// 			if (port_ind >= 0)
+// 			{
+
+// 				// byte_write = write(serial_open_fd[USB_TO_SERIAL1_PORT_INDX], "AT\r", strlen("AT\r"));
+// 				byte_write = write(serial_open_fd[port_ind], enter_keyboard[1], strlen(enter_keyboard[1]));
+
+// 				if (byte_write > 0)
+// 					printf("Write[%d]: %s to @%s\n", strlen(enter_keyboard[1]), enter_keyboard[1], enter_keyboard[0]);
+// 				else
+// 					printf("Err write\n");
+// 				port_ind = -1;
+// 			}
+
+// 			free(enter_keyboard[0]);
+// 			free(enter_keyboard[1]);
+// 			free(enter_keyboard[2]);
+// 			enter_keyboard[0] = NULL;
+// 			enter_keyboard[1] = NULL;
+// 			enter_keyboard[2] = NULL;
+// 		}
+// 	}
+// 	usleep(10);
+// 	// pthread_mutex_unlock(&count_look);
+// }
+void serial_read_pth(void *arr)
+{
+	// pthread_mutex_lock(&count_look);
+	sleep(1);
+	printf("===Wait to Read===\n");
+	int cnt_byte = 0;
+	char a[255];
+	while (1)
+	{
+		for (int i = 0; i < TOTAL_USB_TO_SERIAL_PORT; i++)
+		{
+			// usleep(10);
+			cnt_byte = read(serial_open_fd[i], &a, 255);
+			if (cnt_byte > 0)
+				printf("Readed: %s\n", a);
+			else
+				usleep(10);
+		}
+	}
+
+	// pthread_mutex_unlock(&count_look);
+}
+int main(int argc, char *argv[])
+// int main()
+{
+	// if (argc >= 1)
+	// 	printf("run %s with %s,   %s\n", argv[0], argv[1], argv[2]);
+
+	serial_open_fd[USB_TO_SERIAL0_PORT_INDX] = open_serial_port(argv[1]);
+	serial_open_fd[USB_TO_SERIAL1_PORT_INDX] = open_serial_port(argv[2]);
+	serial_open_fd[USB_TO_SERIAL2_PORT_INDX] = open_serial_port(argv[3]);
+	serial_open_fd[USB_TO_SERIAL3_PORT_INDX] = open_serial_port(argv[4]);
+
+	// pthread_mutex_init(&count_look, NULL);
+
+	pthread_create(&get_keyboard, NULL, (void *)&get_keyboard_pth, NULL);
+	pthread_create(&serial_port_class, NULL, (void *)&serial_port_class_pth, NULL);
+	pthread_create(&serial_read, NULL, (void *)&serial_read_pth, NULL);
+	// printf("sss\n");
+
+	pthread_join(get_keyboard, NULL);
+	pthread_join(serial_port_class, NULL);
+	pthread_join(serial_read, NULL);
+
+	// pthread_mutex_destroy(&count_look);
+	// free(enter_keyboard[index_keyboard]);
+	// close(serial_open_fd[USB_TO_SERIAL1_PORT_INDX]);
+	printf("Donee int main\n");
+
+	return 0;
+}
